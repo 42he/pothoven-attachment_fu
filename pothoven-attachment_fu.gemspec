@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'pothoven-attachment_fu'
-  s.version     = '3.2.9'
+  s.version     = '3.2.10'
   s.date        = '2010-04-30'
   s.summary     = "Rails 4.0 changes"
   s.authors     = ["Rick Olson", "Steven Pothoven","Quyen Nguyen", "Moritz Machner"]
