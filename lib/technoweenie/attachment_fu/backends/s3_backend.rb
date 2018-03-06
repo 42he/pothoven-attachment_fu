@@ -172,6 +172,9 @@ module Technoweenie # :nodoc:
         class RequiredLibraryNotFoundError < StandardError; end
         class ConfigFileNotFoundError < StandardError; end
 
+        MUTEX = Mutex.new   
+
+
         def self.included(base) #:nodoc:
           mattr_reader :bucket_name, :s3_config
 
@@ -185,8 +188,8 @@ module Technoweenie # :nodoc:
           begin
             @@s3_config_path = base.attachment_options[:s3_config_path] || (Rails.root.to_s + '/config/amazon_s3.yml')
             @@s3_config = @@s3_config = YAML.load(ERB.new(File.read(@@s3_config_path)).result)[Rails.env].symbolize_keys
-          #rescue
-          #  raise ConfigFileNotFoundError.new('File %s not found' % @@s3_config_path)
+            #rescue
+            #  raise ConfigFileNotFoundError.new('File %s not found' % @@s3_config_path)
           end
 
           bucket_key = base.attachment_options[:bucket_key]
@@ -325,7 +328,9 @@ module Technoweenie # :nodoc:
           options   = args.extract_options!
           options[:expires_in] = options[:expires_in].to_i if options[:expires_in]
           thumbnail = args.shift
-          S3Object.url_for(full_filename(thumbnail), bucket_name, options)
+          MUTEX.synchronize do
+            S3Object.url_for(full_filename(thumbnail), bucket_name, options)
+          end
         end
 
         def create_temp_file
@@ -333,7 +338,9 @@ module Technoweenie # :nodoc:
         end
 
         def current_data
-          S3Object.value full_filename, bucket_name
+          MUTEX.synchronize do
+            S3Object.value full_filename, bucket_name
+          end
         end
 
         def s3_protocol
@@ -353,29 +360,32 @@ module Technoweenie # :nodoc:
         end
 
         protected
-          # Called in the after_destroy callback
-          def destroy_file
+        # Called in the after_destroy callback
+        def destroy_file
+          MUTEX.synchronize do
             S3Object.delete full_filename, bucket_name
           end
+        end
 
-          def rename_file
-            return unless @old_filename && @old_filename != filename
+        def rename_file
+          return unless @old_filename && @old_filename != filename
 
-            old_full_filename = File.join(base_path, @old_filename)
-
+          old_full_filename = File.join(base_path, @old_filename)
+          MUTEX.synchronize do
             S3Object.rename(
               old_full_filename,
               full_filename,
               bucket_name,
               :access => attachment_options[:s3_access]
             )
-
-            @old_filename = nil
-            true
           end
+          @old_filename = nil
+          true
+        end
 
-          def save_to_storage
-            if save_attachment?
+        def save_to_storage
+          if save_attachment?
+            MUTEX.synchronize do
               S3Object.store(
                 full_filename,
                 (temp_path ? File.open(temp_path) : temp_data),
@@ -383,11 +393,12 @@ module Technoweenie # :nodoc:
                 :content_type => content_type,
                 :access => attachment_options[:s3_access]
               )
-            end
-
-            @old_filename = nil
-            true
+            end  
           end
+
+          @old_filename = nil
+          true
+        end
       end
     end
   end
